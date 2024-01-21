@@ -1,14 +1,17 @@
-CXX=gcc
-CXXFLAGS= -Wall -g
 
-SOURCES = polyencoder.c
-HEADERS = polyencoder.h
+CC = gcc
+CFLAGS = -Wall
 
-main: polyencoder.o $(OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o main
+all: encode decode
 
-%.o: %.c $(HEADERS)
-	$(CXX) $(CXXFLAGS) --compile $< -o $@
+encode: encode.o polyencoder.o
+	$(CC) $(CFLAGS) -o encode encode.o polyencoder.o
+
+decode: decode.o polyencoder.o
+	$(CC) $(CFLAGS) -o decode decode.o polyencoder.o
+
+polyencoder.o: polyencoder.c polyencoder.h
+	$(CC) $(CFLAGS) -c polyencoder.c
 
 clean:
-	rm -f *.o main
+	rm -f encode decode *.o

@@ -6,6 +6,8 @@ typedef struct {
     char encodingMap[62];
 } Codec;
 
+
+
 void *createCodec(char key[62]) {
     Codec *codec = (Codec *)malloc(sizeof(Codec));
     if (codec == NULL) {
@@ -79,7 +81,7 @@ int decode(char *textin, char *textout, int len, void *codec) {
         }
     }
 
-    textout[len] = '\0'; // Null-terminate the decoded string
+    textout[len] = '\0'; 
 
     return len;
 }
@@ -88,20 +90,3 @@ void freecodec(void *codec) {
     free(codec);
 }
 
-int main() {
-    void *codec = createCodec("defghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abc");
-
-    char txtsrc[] = "shlomi 7ka sali 7ka matan melamed 7ka ben 7ka harel";
-    char txtencode[53]; // Include space for null terminator
-
-    encode(txtsrc, txtencode, 52, codec);
-    printf("encode %s:\n%s\n", txtsrc, txtencode);
-
-    char txtdecode[53]; // Include space for null terminator
-    decode(txtencode, txtdecode, 52, codec);
-    printf("decode %s:\n%s\n", txtencode, txtdecode);
-
-    freecodec(codec);
-
-    return 0;
-}
