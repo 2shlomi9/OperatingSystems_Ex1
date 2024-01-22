@@ -1,30 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/wait.h>
-
-void executeCommand(const char *command, const char *arg1, const char *arg2) {
-    pid_t pid = fork();
-    if (pid == -1) {
-        perror("fork");
-        exit(EXIT_FAILURE);
-    } else if (pid == 0) {
-        // Child process
-        execlp(command, command, arg1, arg2, NULL);
-        perror("execlp");
-        _exit(EXIT_FAILURE);
-    }
-    
-
-    // Parent process
-    int status;
-    waitpid(pid, &status, 0);
-
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS) {
-        fprintf(stderr, "Error: %s process failed\n", command);
-        exit(EXIT_FAILURE);
-    }
-}
+#include <string.h>
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -32,27 +11,65 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-   
-    char tempTarFile[] = "/tmp/myzip_tempXXXXXX";
-    int tarFd = mkstemp(tempTarFile);
-    if (tarFd == -1) {
-        perror("mkstemp");
+    int pipefdone[2], pipefdtwo[2];
+    if (pipe(pipefdone) == -1 || pipe(pipefdtwo) == -1) {
+        perror("pipe");
         exit(EXIT_FAILURE);
     }
 
-    
-    executeCommand("tar", "-cf", tempTarFile);
+    pid_t tar_pid = fork();
+    if (tar_pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (tar_pid == 0) {
+        // Child 1 (tar)
+        close(1); // Close stdout
+        dup2(pipefdone[1], 1); // Redirect stdout to pipefdone[1]
+        char *arglist[] = {"tar", "-cvf", "-", argv[1], NULL};
+        execvp(arglist[0], arglist);
+        perror("execvp tar");
+        exit(EXIT_FAILURE);
+    }
 
-    
-    executeCommand("compress", tempTarFile, NULL);
+    pid_t gzip_pid = fork();
+    if (gzip_pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (gzip_pid == 0) {
+        // Child 2 (gzip)
+        close(0); // Close stdin
+        close(1); // Close stdout
+        dup2(pipefdone[0], 0); // Redirect stdin to pipefdone[0]
+        dup2(pipefdtwo[1], 1); // Redirect stdout to pipefdtwo[1]
+        char *arglist[] = {"gzip", "-", NULL};
+        execvp(arglist[0], arglist);
+        perror("execvp gzip");
+        exit(EXIT_FAILURE);
+    }
 
-    
-    executeCommand("gpg --output output.gpg --encrypt", tempTarFile, NULL);
+    pid_t gpg_pid = fork();
+    if (gpg_pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (gpg_pid == 0) {
+        // Child 3 (gpg)
+        close(0); // Close stdin
+        dup2(pipefdtwo[0], 0); // Redirect stdin to pipefdtwo[0]
+        char *arglist[] = {"gpg", "-c", "-", NULL};
+        execvp(arglist[0], arglist);
+        perror("execvp gpg");
+        exit(EXIT_FAILURE);
+    }
 
-    printf("myzip completed successfully.\n");
+    close(pipefdone[0]);
+    close(pipefdone[1]);
+    close(pipefdtwo[0]);
+    close(pipefdtwo[1]);
 
-    // Clean up temporary file
-    unlink(tempTarFile);
+    waitpid(tar_pid, NULL, 0);
+    waitpid(gzip_pid, NULL, 0);
+    waitpid(gpg_pid, NULL, 0);
 
+    printf("Compression completed successfully.\n");
     return 0;
 }
