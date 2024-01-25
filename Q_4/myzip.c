@@ -25,6 +25,10 @@ int main(int argc, char *argv[]) {
         // Child 1 (tar)
         close(1); // Close stdout
         dup2(pipefdone[1], 1); // Redirect stdout to pipefdone[1]
+        close(pipefdone[0]); // Close unused read end
+        close(pipefdtwo[0]); // Close unused pipes from other processes
+        close(pipefdtwo[1]);
+
         char *arglist[] = {"tar", "-cvf", "-", argv[1], NULL};
         execvp(arglist[0], arglist);
         perror("execvp tar");
@@ -39,8 +43,11 @@ int main(int argc, char *argv[]) {
         // Child 2 (gzip)
         close(0); // Close stdin
         close(1); // Close stdout
-        dup2(pipefdone[0], 0); // Redirect stdin to pipefdone[0]
+        dup2(pipefdone[0], 0);  // Redirect stdin to pipefdone[0]
         dup2(pipefdtwo[1], 1); // Redirect stdout to pipefdtwo[1]
+        close(pipefdone[1]); // Close unused write end
+        close(pipefdtwo[0]); // Close unused read end
+
         char *arglist[] = {"gzip", "-", NULL};
         execvp(arglist[0], arglist);
         perror("execvp gzip");
@@ -55,12 +62,17 @@ int main(int argc, char *argv[]) {
         // Child 3 (gpg)
         close(0); // Close stdin
         dup2(pipefdtwo[0], 0); // Redirect stdin to pipefdtwo[0]
+        close(pipefdone[0]); // Close unused pipes from other processes
+        close(pipefdone[1]);
+        close(pipefdtwo[1]); // Close unused write end
+
         char *arglist[] = {"gpg", "-c", "-", NULL};
         execvp(arglist[0], arglist);
         perror("execvp gpg");
         exit(EXIT_FAILURE);
     }
 
+    // Parent process
     close(pipefdone[0]);
     close(pipefdone[1]);
     close(pipefdtwo[0]);

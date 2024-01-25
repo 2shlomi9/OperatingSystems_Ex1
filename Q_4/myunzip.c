@@ -23,8 +23,9 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     } else if (gpg_pid == 0) {
         // Child 1 (gpg)
-        close(1); // Close stdout
+        close(1);  // Close stdout
         dup2(pipefd[1], 1); // Redirect stdout to pipefd[1]
+        close(pipefd[0]);  // Close unused pipe end
         char *arglist[] = {"gpg", "--decrypt", argv[1], NULL};
         execvp(arglist[0], arglist);
         perror("execvp gpg");
@@ -47,10 +48,11 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     } else if (gunzip_pid == 0) {
         // Child 2 (gunzip)
-        close(0); // Close stdin
-        dup2(pipefd[0], 0); // Redirect stdin to pipefd[0]
-        close(1); // Close stdout
-        dup2(tempfd, 1); // Redirect stdout to temp file
+        close(0);  // Close stdin
+        dup2(pipefd[0], 0);  // Redirect stdin to pipefd[0]
+        close(pipefd[1]);  // Close unused pipe end
+        close(1);  // Close stdout
+        dup2(tempfd, 1);  // Redirect stdout to temp file
         char *arglist[] = {"gunzip", "-", NULL};
         execvp(arglist[0], arglist);
         perror("execvp gunzip");
@@ -58,9 +60,12 @@ int main(int argc, char *argv[]) {
     }
 
     close(pipefd[0]);
+    close(tempfd);  // Close temp file in parent
+
     waitpid(gpg_pid, NULL, 0);
     waitpid(gunzip_pid, NULL, 0);
 
+    // Parent (after gunzip completes)
     pid_t tar_pid = fork();
     if (tar_pid == -1) {
         perror("fork");
@@ -74,8 +79,7 @@ int main(int argc, char *argv[]) {
     }
 
     waitpid(tar_pid, NULL, 0);
-    close(tempfd);
-    unlink(tempfile);
+    unlink(tempfile);  // Delete temp file after tar completes
 
     printf("Decompression completed successfully.\n");
     return 0;
