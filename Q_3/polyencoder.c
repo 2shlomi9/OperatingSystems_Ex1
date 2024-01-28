@@ -48,7 +48,7 @@ int encode(char *textin, char *textout, int len, void *codec) {
         }
     }
 
-    textout[len] = '\0'; // Null-terminate the encoded string
+    textout[len] = '\0'; 
 
     return len;
 }
@@ -64,6 +64,7 @@ int decode(char *textin, char *textout, int len, void *codec) {
         char currentChar = textin[i];
 
         int index;
+        
         if (currentChar >= 'a' && currentChar <= 'z') {
             index = strchr(polyCodec->encodingMap, currentChar) - polyCodec->encodingMap;
         } else if (currentChar >= 'A' && currentChar <= 'Z') {
