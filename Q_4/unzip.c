@@ -7,7 +7,7 @@
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s file\n", argv[0]);
+        fprintf(stderr, "Usage: %s directory\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -17,25 +17,22 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+  
     pid_t gpg_pid = fork();
     if (gpg_pid == -1) {
         perror("fork");
         exit(EXIT_FAILURE);
     } else if (gpg_pid == 0) {
         // Child 1 (gpg)
-        close(pipefdone[0]);
-        close(pipefdtwo[0]);
-        close(pipefdtwo[1]);
-
-        dup2(pipefdone[1], STDOUT_FILENO);  // Redirect stdout to the pipe
-        close(pipefdone[1]);
-        char *arglist[] = {"gpg", "-d", argv[1], NULL};
+        close(1); // Close stdout
+        dup2(pipefdone[0], 1); // Redirect stdout to pipefdone[1]
+        char *arglist[] = {"gpg", "--decrypt", argv[1], NULL};
         execvp(arglist[0], arglist);
         perror("execvp gpg");
         exit(EXIT_FAILURE);
     }
+        waitpid(gpg_pid, NULL, 0);
 
-    
 
     pid_t gunzip_pid = fork();
     if (gunzip_pid == -1) {
@@ -43,15 +40,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     } else if (gunzip_pid == 0) {
         // Child 2 (gunzip)
-        close(pipefdone[1]);
-        close(pipefdtwo[0]);
-
-        dup2(pipefdone[0], STDIN_FILENO);   // Redirect stdin to the first pipe
-        close(pipefdone[0]);
-
-        dup2(pipefdtwo[1], STDOUT_FILENO);  // Redirect stdout to the second pipe
-        close(pipefdtwo[1]);
-        char *arglist[] = {"gunzip", "-d", NULL};
+        close(0); // Close stdin
+        close(1); // Close stdout
+        dup2(pipefdone[1], 0);  // Redirect stdin to pipefdone[0]
+        dup2(pipefdtwo[0], 1); // Redirect stdout to pipefdtwo[1]
+        char *filename = strtok(argv[1], ".gpg");  // extracts "folder.tar.gz" from "folder.tar.gz.gpg"
+        char *temp_filename = strcat(filename, ".tar.gz");  // adds ".tar.gz" for gunzip
+        printf("%s",temp_filename);
+        char *arglist[] = {"gunzip", "-c", NULL};  
         execvp(arglist[0], arglist);
         perror("execvp gunzip");
         exit(EXIT_FAILURE);
@@ -62,26 +58,27 @@ int main(int argc, char *argv[]) {
         perror("fork");
         exit(EXIT_FAILURE);
     } else if (tar_pid == 0) {
-        close(pipefdtwo[1]);
-        close(pipefdone[0]);
-        close(pipefdone[1]);
+        // Child 3 (tar)
+        close(0); // Close stdin
+        dup2(pipefdtwo[1], 0); // Redirect stdin to pipefdtwo[0]
 
-        dup2(pipefdtwo[0], STDIN_FILENO);   // Redirect stdin to the second pipe
-        close(pipefdtwo[0]);
-        char *arglist[] = {"tar", "-xv", NULL}; // Extract from stdin
+
+        char *arglist[] = {"tar", "-xvf", "-", NULL};
         execvp(arglist[0], arglist);
         perror("execvp tar");
         exit(EXIT_FAILURE);
     }
 
+    // Parent process
     close(pipefdone[0]);
     close(pipefdone[1]);
     close(pipefdtwo[0]);
     close(pipefdtwo[1]);
-    waitpid(gpg_pid, NULL, 0);
     waitpid(gunzip_pid, NULL, 0);
     waitpid(tar_pid, NULL, 0);
 
-    printf("Decompression and extraction completed successfully.\n");
+
+
+    printf("Decompression completed successfully.\n");
     return 0;
 }
